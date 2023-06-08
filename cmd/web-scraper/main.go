@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -17,9 +18,11 @@ import (
 var RequestCount int
 
 func main() {
+	// Get sources from local file
+	sourceList := getSources("sources.txt")
+
 	// Add handler functions
-	http.Handle("/api/cnn", &HandlerAccess{url: "http://rss.cnn.com/rss/cnn_topstories.rss"})
-	http.Handle("/api/simp", &HandlerAccess{url: "https://feeds.simplecast.com/54nAGcIl"})
+	http.Handle("/api/simp", &HandlerAccess{urls: sourceList})
 
 	// Make channel for termination signals
 	signalChan := make(chan os.Signal, 1)
@@ -31,6 +34,25 @@ func main() {
 	port := ":8000"
 	log.Println("Launched server. Waiting serving and listening on port ", port)
 	log.Fatal(http.ListenAndServe(port, nil))
+}
+
+// function for getting list of RSS sources. Returns list of urls as strings
+func getSources(filePath string) []string {
+	// open the file in read only mode
+	file, err := os.Open(filePath)
+	if err != nil {
+		log.Fatal("Failed to open file with error: ", err)
+	}
+	defer file.Close() // Close file after function returns
+
+	scanner := bufio.NewScanner(file)
+	var sourceList []string
+	// Iterate over each line and assign to []string to return
+	for scanner.Scan() {
+		line := scanner.Text()
+		sourceList = append(sourceList, line)
+	}
+	return sourceList
 }
 
 // function for custom commands during runtime
@@ -53,6 +75,7 @@ func runtimeCommands(signalChan chan os.Signal) {
 				fmt.Println(commandList[i], ": ", commandHelpEntryList[i])
 			}
 		case "exit":
+			fmt.Println("Total requests served: ", RequestCount)
 			signalChan <- syscall.SIGINT // Send termination signal to trigger cleanup and exit in terminationSignal()
 		default:
 			fmt.Println("Invalid command")
@@ -72,35 +95,63 @@ func terminationSignal(signalChan chan os.Signal) {
 
 // This is an interface to encapsulate data that you want to serve.
 type HandlerAccess struct {
-	url string
+	urls []string
 }
 
 // This method implements a specificHandler with some data and serves it to an http.ResponseWriter
 func (handlerAccess *HandlerAccess) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	xmlData, err := retrieveRSS(handlerAccess.url)
+	// First thing, retrieve a slice of RSS feeds.
+	var xmlData [][]byte
+	for _, url := range handlerAccess.urls {
+		retrievedData, err := retrieveRSS(url)
+		if err != nil {
+			log.Fatal("Failed to retrieve RSS with error: ", err)
+		}
+		xmlData = append(xmlData, retrievedData)
+		// log.Println("xmlData so far: ", xmlData)
+	}
+
+	// We now have the response body in the form of a slice of byte slices named xmlData.
+	// Use the xml.marshal function to turn each into our custom Go xml object
+	var rssFeeds []article.RSSFeed // Our list of Go objects
+	for _, f := range xmlData {
+		var currentFeed article.RSSFeed
+		err := xml.Unmarshal(f, &currentFeed)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		rssFeeds = append(rssFeeds, currentFeed)
+	}
+
+	// Now we can loop through rssFeeds (our go object slice), and turn each into a json using our custom function
+	type JSONObject struct {
+		// Storage object for the multiple json byte arrays.
+		Data string `json:"data"`
+	}
+
+	var jsonArray []JSONObject // List of JSONObjects to eventually marshal for transmission
+	for _, f := range rssFeeds {
+		jsonData, err := goXmlToJson(f)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		// turn each byte array into a JSONObject, and then append them into jsonArray
+		jsonObject := JSONObject{Data: string(jsonData)}
+		jsonArray = append(jsonArray, jsonObject)
+	}
+
+	// Marshal the array of JSON objects into a json byte array
+	responseJSON, err := json.Marshal(jsonArray)
 	if err != nil {
 		log.Println(err)
 	}
 
-	// We now have the response body in the form of a []byte named xmlData.
-	// Use the xml.marshal function to turn it into our custom Go xml object
-	var rssFeed article.RSSFeed
-	err = xml.Unmarshal([]byte(xmlData), &rssFeed)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	// Now we can convert our custom go object (rssFeed) into json using a custom function
-	jsonData, err := xmlToJson(rssFeed)
-	if err != nil {
-		log.Println(err)
-		return
-	}
 	requestingIP := ReadUserIP(r)
 	log.Println("Served content to: ", requestingIP)
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(jsonData)
+	w.Write(responseJSON)
 	RequestCount++
 }
 
@@ -127,7 +178,7 @@ func retrieveRSS(url string) ([]byte, error) {
 }
 
 // Converts byte array of xml format rss into a byte array of json format rss. Returns byte array and error (nill if successful)
-func xmlToJson(rssData article.RSSFeed) ([]byte, error) {
+func goXmlToJson(rssData article.RSSFeed) ([]byte, error) {
 	// Marshal rssFeed object into json, for RESTful transmission.
 	jsonData, err := json.Marshal(rssData)
 	// Go encodes brackets and certain characters as \u codes. There is a way to disable this behavior, but I don't think that's needed.
