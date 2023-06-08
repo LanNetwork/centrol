@@ -14,13 +14,16 @@ def main():
 
     # Image to add to button
     assetfolder_path = '/home/lennetwork/Documents/go_projects/centrol/python/assets'
-    button_height = 24
-    buttonImages = ('pluslogo.png','minuslogo.png')
+    button_size = 24
+    buttonImages = ('pluslogo.png', 'minuslogo.png')
+
+    # Adding left side menu buttons
     path = os.path.join(assetfolder_path, buttonImages[0])
-    button_add = create_button(button_frame, path, button_height, button_height)
+    button_add = create_button(
+        button_frame, path, button_size, command=lambda: open_add_window(window, listbox_feed))
 
     path = os.path.join(assetfolder_path, buttonImages[1])
-    button_add = create_button(button_frame, path, button_height, button_height)
+    button_remove = create_button(button_frame, path, button_size)
 
     # Creating feed widgets
     label_feed = tk.Label(window, text="Feed list")
@@ -66,15 +69,16 @@ def main():
     json_rss = getRSS(url)
 
     # Getting the name of the source. Source decides their title.
-    sourceName = json_rss['Channel']['Title']
-    listbox_feed.insert(tk.END, sourceName)
-    listbox_feed.itemconfigure(tk.END, background='#3b3c3d', foreground='white',
-                               selectbackground='#3b3c3d', selectforeground='white')
+    sourceNames = json_rss['Channel']['Title']
+    listbox_feed.insert(tk.END, sourceNames)
+    for i, item in enumerate(listbox_feed.get(0, tk.END)):
+        listbox_feed.itemconfigure(tk.END, background = '#bdc2c9', foreground = 'black', selectbackground = '#3b3c3d', selectforeground='white')
+    listbox_feed.configure(exportselection=False)
+    listbox_feed.bind('<<ListboxSelect>>', lambda event: listbox_feed_selected(event, listbox_feed))
 
     #  This gets a list of Items. Each item contains a dictionary with the keys:
     # 'Title', 'Description', 'PubDate', 'Link'
     items: list = json_rss['Channel']['Item']
-
     for i, item in enumerate(items):
         listbox_content.insert(i, item['Title'])
         # alternate colors light grey and dark grey
@@ -83,7 +87,7 @@ def main():
             i, background=background, foreground='black', selectbackground='#3b3c3d', selectforeground='white')
 
     listbox_content.configure(
-        relief=tk.RAISED, borderwidth=1, highlightthickness=1)
+        relief=tk.RAISED, borderwidth=1, highlightthickness=1, exportselection=False)
 
     # Handle placing description in description box when title is selected
     # Bind function to ListboxSelect event
@@ -93,9 +97,11 @@ def main():
     window.mainloop()
 
 
-def create_button(frame: tk.Frame, imagePath, width: int, height: int) -> tk.Button:
+# Creates left side menu button.
+def create_button(frame: tk.Frame, imagePath, size: int, command=None) -> tk.Button:
     image = tk.PhotoImage(file=imagePath)
-    button = tk.Button(frame, image=image, width=width, height=height)
+    button = tk.Button(frame, image=image, width=size,
+                       height=size, command=command)
 
     # Store reference to image so it doesn't get obliviated by the garbage collecter
     button.image = image
@@ -103,6 +109,49 @@ def create_button(frame: tk.Frame, imagePath, width: int, height: int) -> tk.But
     # and encapsulates the image, but this is fine for now. Minimal mutation.
     button.pack(side='top')
     return button
+
+
+# Function called when add button is clicked.
+# Creates a popup window that takes link to RSS feed.
+def open_add_window(master, listbox_feed: tk.Listbox):
+    new_window = tk.Toplevel(master)
+    # new_window.lift()  # Make the window the top layer
+    new_window.grab_set()  # Disable interaction with the main window
+    # new_window.modal = True  # Set the window as modal
+    # Set the main window as the parent of the popup window
+    new_window.transient(master)
+    new_window.geometry("300x150")
+
+    # Create a label for the textbox
+    label = tk.Label(new_window, text="Enter RSS Feed URL:")
+    label.pack()
+
+    # Create a textbox
+    textbox = tk.Entry(new_window)
+    textbox.pack()
+
+    # Create a select button
+    select_button = tk.Button(new_window, text="Select")
+    select_button.pack()
+
+    # Function to handle button click
+    def select_button_click():
+        # Retrieve the text from the textbox
+        url = textbox.get()
+        # Add url to feed list
+        listbox_feed.insert(tk.END, url)
+        for i, item in enumerate(listbox_feed):
+            item.itemconfigure(i, background = '#bdc2c9', foreground = 'black', selectbackground = '#3b3c3d', selectforeground='white')
+            pass
+            # background = '#aeb2b8' if i % 2 == 0 else '#bdc2c9'
+            # listbox_content.itemconfigure(
+            # i, background=background, foreground='black', selectbackground='#3b3c3d', selectforeground='white')
+
+        # Close the popup window
+        new_window.destroy()
+
+    # Set the button's command to the click function
+    select_button.config(command=select_button_click)
 
 
 def listbox_content_selected(event, listbox_content: tk.Listbox, text_description: HtmlFrame, json: list):
@@ -114,14 +163,18 @@ def listbox_content_selected(event, listbox_content: tk.Listbox, text_descriptio
         selected_index = int(listbox_content.curselection()[0])
         # Fetch the current item's description from the list of items
         currentText = json[selected_index]['Description']
-        updateTextbox(text_description, currentText)
+        text_description.set_content(currentText)
 
 
-def updateTextbox(textbox: HtmlFrame, text: str):
-    textbox.set_content(text)
-
+def listbox_feed_selected(event, listbox_feed: tk.Listbox):
+    if listbox_feed.curselection():  # If it is, set currentText variable
+        # Get index of selected item
+        # We have to get [0] of the selection. tkinter returns selection as a tuple because it can be a range
+        selected_index = int(listbox_feed.curselection()[0])
 
 # Function for requesting the JSON data of the RSS. Returns JSON object if successful, returns None is not successful.
+
+
 def getRSS(url: str):
     response = requests.get(url)
 
