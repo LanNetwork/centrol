@@ -1,9 +1,10 @@
+import json
 import tkinter as tk
 import requests
 from tkinterhtml import HtmlFrame
 import os
 
-
+currentSource = None
 def main():
     window = tk.Tk()
 
@@ -66,25 +67,36 @@ def main():
 
     # Get JSON using custom function
     url = 'http://localhost:8000/api/simp'
-    json_rss = getRSS(url)
+
+    # json_rss = getRSS(url) # old
+
+    # Attempt to get list of sources on launch
+    sourcesJsonList = []
+    while not sourcesJsonList:
+        retrieve = getRSS(url)
+        if retrieve is not None:
+            sourcesJsonList += retrieve
+        else:
+            promptRequest(window) # block until user clicks retry button
+    
+    # Seperate sources from list. Sources is not a list of json objects (dicts)
+    sources = [json.loads(sourcesJsonList[x]['data']) for x in range(len(sourcesJsonList))]
 
     # Getting the name of the source. Source decides their title.
-    sourceNames = json_rss['Channel']['Title']
-    listbox_feed.insert(tk.END, sourceNames)
+    for source in sources:
+        sourceName = source['Channel']['Title']
+        listbox_feed.insert(tk.END, sourceName)
+
+    # Setting selection colors
     for i, item in enumerate(listbox_feed.get(0, tk.END)):
         listbox_feed.itemconfigure(tk.END, background = '#bdc2c9', foreground = 'black', selectbackground = '#3b3c3d', selectforeground='white')
+
     listbox_feed.configure(exportselection=False)
-    listbox_feed.bind('<<ListboxSelect>>', lambda event: listbox_feed_selected(event, listbox_feed))
+
+    listbox_feed.bind('<<ListboxSelect>>', lambda event: listbox_feed_selected(event, listbox_feed, listbox_content, sources))
 
     #  This gets a list of Items. Each item contains a dictionary with the keys:
     # 'Title', 'Description', 'PubDate', 'Link'
-    items: list = json_rss['Channel']['Item']
-    for i, item in enumerate(items):
-        listbox_content.insert(i, item['Title'])
-        # alternate colors light grey and dark grey
-        background = '#aeb2b8' if i % 2 == 0 else '#bdc2c9'
-        listbox_content.itemconfigure(
-            i, background=background, foreground='black', selectbackground='#3b3c3d', selectforeground='white')
 
     listbox_content.configure(
         relief=tk.RAISED, borderwidth=1, highlightthickness=1, exportselection=False)
@@ -92,9 +104,33 @@ def main():
     # Handle placing description in description box when title is selected
     # Bind function to ListboxSelect event
     listbox_content.bind('<<ListboxSelect>>', lambda event: listbox_content_selected(
-        event, listbox_content=listbox_content, text_description=text_description, json=items))
+        event, listbox_content=listbox_content, text_description=text_description, json=sources[currentSource]))
 
     window.mainloop()
+
+# Blocking function for rerequesting
+def promptRequest(master):
+    new_window = tk.Toplevel(master)
+    # new_window.lift()  # Make the window the top layer
+    new_window.grab_set()  # Disable interaction with the main window
+    # Set the main window as the parent of the popup window
+    new_window.transient(master)
+    new_window.geometry("300x150")
+
+    # Create a label for the textbox
+    label = tk.Label(new_window, text="Could not find sources. Try again?")
+    label.pack()
+
+    # Create a select button
+    select_button = tk.Button(new_window, text="Retry request")
+    select_button.pack()
+
+    # Function to handle button click
+    def select_button_click():
+        new_window.destroy()
+
+    # Set the button's command to the click function
+    select_button.config(command=select_button_click)
 
 
 # Creates left side menu button.
@@ -162,19 +198,36 @@ def listbox_content_selected(event, listbox_content: tk.Listbox, text_descriptio
         # We have to get [0] of the selection. tkinter returns selection as a tuple because it can be a range
         selected_index = int(listbox_content.curselection()[0])
         # Fetch the current item's description from the list of items
-        currentText = json[selected_index]['Description']
-        text_description.set_content(currentText)
+        currentText = json['Channel']['Item'][selected_index]['Description']
+        text_description.set_content(makeHtml(currentText))
 
+# The htmlFrame widget from tkinterhtml only renders html. Dumb. 
+# This function turns any text into html by throwing a div on it.
+def makeHtml(nonHtml):
+    return f'<div>{nonHtml}</div>'
 
-def listbox_feed_selected(event, listbox_feed: tk.Listbox):
+def listbox_feed_selected(event, listbox_feed: tk.Listbox, listbox_content: tk.Listbox, sources: list):
     if listbox_feed.curselection():  # If it is, set currentText variable
         # Get index of selected item
         # We have to get [0] of the selection. tkinter returns selection as a tuple because it can be a range
         selected_index = int(listbox_feed.curselection()[0])
+        global currentSource
+        currentSource = selected_index # update global variable
+        currentContent = sources[selected_index]
+        populateContent(listbox_content, currentContent['Channel']['Item'])
+        
+
+
+def populateContent(listbox_content: tk.Listbox, itemJson):
+    listbox_content.delete(0, tk.END)
+    for i, item in enumerate(itemJson):
+            listbox_content.insert(i, item['Title'])
+            # alternate colors light grey and dark grey
+            background = '#aeb2b8' if i % 2 == 0 else '#bdc2c9'
+            listbox_content.itemconfigure(
+                i, background=background, foreground='black', selectbackground='#3b3c3d', selectforeground='white')
 
 # Function for requesting the JSON data of the RSS. Returns JSON object if successful, returns None is not successful.
-
-
 def getRSS(url: str):
     response = requests.get(url)
 
