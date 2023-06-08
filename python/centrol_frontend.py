@@ -7,18 +7,20 @@ import os
 def main():
     window = tk.Tk()
 
-    example_titles = ["this is a title", "iran is a country", "in shocking news: whitehouse isn't actually white",
-                      "how many mics do we rip on the daily: The real answer", "Scientist discovers shocking truth: all items in universe fit into only 2 categories: potato, not potato"]
-    # Button stack
+    # Frame for holding the button stack on the left.
     button_frame = tk.Frame(window)
     button_frame.grid(row=1, column=0, sticky='nw')
-    # relieflist = ["flat", "raised", "sunken",  "groove", "ridge", ]
+    # relieflist = ["flat", "raised", "sunken",  "groove", "ridge"]
 
     # Image to add to button
-    logo_addsource = tk.PhotoImage(file= '/home/lennetwork/Documents/go_projects/centrol/python/assets/pluslogo.png')
-    button_addsource = tk.Button(button_frame, image=logo_addsource, height=24, width=24)
-    button_addsource.pack(side='top')
+    assetfolder_path = '/home/lennetwork/Documents/go_projects/centrol/python/assets'
+    button_height = 24
+    buttonImages = ('pluslogo.png','minuslogo.png')
+    path = os.path.join(assetfolder_path, buttonImages[0])
+    button_add = create_button(button_frame, path, button_height, button_height)
 
+    path = os.path.join(assetfolder_path, buttonImages[1])
+    button_add = create_button(button_frame, path, button_height, button_height)
 
     # Creating feed widgets
     label_feed = tk.Label(window, text="Feed list")
@@ -89,6 +91,18 @@ def main():
         event, listbox_content=listbox_content, text_description=text_description, json=items))
 
     window.mainloop()
+
+
+def create_button(frame: tk.Frame, imagePath, width: int, height: int) -> tk.Button:
+    image = tk.PhotoImage(file=imagePath)
+    button = tk.Button(frame, image=image, width=width, height=height)
+
+    # Store reference to image so it doesn't get obliviated by the garbage collecter
+    button.image = image
+    # The proper thing to do would be make a custom button class that inherits from tk.Button,
+    # and encapsulates the image, but this is fine for now. Minimal mutation.
+    button.pack(side='top')
+    return button
 
 
 def listbox_content_selected(event, listbox_content: tk.Listbox, text_description: HtmlFrame, json: list):
