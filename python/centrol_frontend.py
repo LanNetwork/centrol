@@ -92,29 +92,28 @@ def main():
     for i, item in enumerate(listbox_feed.get(0, tk.END)):
         listbox_feed.itemconfigure(i, background='#bdc2c9', foreground='black',
                                    selectbackground='#3b3c3d', selectforeground='white')
-
+    
+    # Configuration for feed listbox.
     listbox_feed.configure(
         relief=tk.RAISED, borderwidth=1, highlightthickness=1, exportselection=False)
 
+    # Bind the selection event of feed listbox items to the listbox_feed_selected() function.
+    # It's a lambda in order to pass in references to the other widgets and global data.
     listbox_feed.bind('<<ListboxSelect>>', lambda event: listbox_feed_selected(
         event, listbox_feed, listbox_content, sources, text_description))
-
-    #  This gets a list of Items. Each item contains a dictionary with the keys:
-    # 'Title', 'Description', 'PubDate', 'Link'
 
     listbox_content.configure(
         relief=tk.RAISED, borderwidth=1, highlightthickness=1, exportselection=False)
 
     # Handle placing description in description box when title is selected
     # Bind function to ListboxSelect event
+    # It's a lambda in order to pass in references to the other widgets and global data.
     listbox_content.bind('<<ListboxSelect>>', lambda event: listbox_content_selected(
         event, listbox_content=listbox_content, text_description=text_description, json=sources[currentSource]))
 
     window.mainloop()
 
 # Blocking function for rerequesting
-
-
 def promptRequest(master):
     new_window = tk.Toplevel(master)
     # new_window.lift()  # Make the window the top layer
@@ -139,7 +138,8 @@ def promptRequest(master):
     select_button.config(command=select_button_click)
 
 
-# Creates left side menu button.
+# Creates left side menu buttons.
+# These buttons are created in a frame that stores them all, and then can be manipulated by the larger window manager.
 def create_button(frame: tk.Frame, imagePath, size: int, command=None) -> tk.Button:
     image = tk.PhotoImage(file=imagePath)
     button = tk.Button(frame, image=image, width=size,
